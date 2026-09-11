@@ -1,0 +1,164 @@
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(tidytext)
+library(ggplot2)
+library(forcats)
+library(tibble)
+library(scales)
+
+
+file_a <- "text/A07594__Circle_of_Commerce.txt"
+file_b <- "text/B14801__Free_Trade.txt"
+
+text_a <- read_file(file_a)
+text_b <- read_file(file_b)
+
+texts <- tibble(
+  doc_title = c("Text A", "Text B"),
+  text = c(text_a, text_b)
+)
+
+texts
+```
+```{r}
+words <- texts %>%
+  unnest_tokens(word, text)%>%
+#the same as unnest_tokens(output = word, input = text)
+  mutate(word = str_to_lower(word))
+
+total_tokens <- words %>%
+  count(doc_title, name = "total_tokens")
+
+data("stop_words")
+custom_stopwords <- tibble(
+  word = c("vnto", "haue", "doo", "hath", "bee", "ye", "thee")
+)
+
+all_stopwords <- bind_rows(stop_words, custom_stopwords) %>%
+  distinct(word)
+
+tokens_after_stopwords <- words %>%
+  anti_join(all_stopwords, by = "word")%>%
+  count(doc_title, name = "tokens_after_stopwords")
+  
+corpus_diagnostics <- total_tokens %>%
+  left_join(tokens_after_stopwords, by = "doc_title") %>%
+  mutate(
+    tokens_removed  = total_tokens - tokens_after_stopwords,
+    percent_removed = round(100 * tokens_removed / total_tokens, 2)
+  )
+  
+```
+For Text A, 56.64% of all tokens were removed. For Text B, 59.82% of all tokens were removed. Therefore, the percentages of stopwords in both texts are roughly the same, with a marginal 3% difference. However, both texts have lost over half of its tokens after stopwords removal, substantially changing the body and potentially the content. 
+
+
+```{r}
+word_counts_before <- words %>%
+  count(doc_title, word, sort = TRUE)
+
+word_counts_wide_before <- word_counts_before %>%
+  pivot_wider(names_from = doc_title, 
+              values_from = n, 
+              values_fill = 0)%>%
+  mutate(max_n = pmax(`Text A`, `Text B`)) %>%
+  arrange(desc(max_n))
+
+plot_n_words <- 15
+before_plot_tbl <- word_counts_wide_before %>%
+    slice_head(n = plot_n_words) %>%
+  pivot_longer(
+    cols = c(`Text A`, `Text B`),
+    names_to = "doc_title",
+    values_to = "n"
+  ) %>%
+  mutate(word = fct_reorder(word, n, .fun = max))
+
+ggplot(before_plot_tbl, aes(x = n, y = word)) + 
+  geom_col() +
+  facet_wrap(~ doc_title, scales = "free_x") +
+  labs(
+    title = "Most frequent words (stopwords removed)",
+    subtitle = paste0(
+      "Top ", plot_n_words,
+      " words by maximum frequency across both texts"
+    ),
+    x = "Word frequency",
+    y = NULL
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+word_counts_after <- texts %>%
+  unnest_tokens(word, text) %>%
+  mutate(word = str_to_lower(word)) %>%
+  anti_join(all_stopwords, by = "word") %>%
+  count(doc_title, word, sort = TRUE)
+
+plot_n_words <- 15
+
+word_counts_wide_after <- word_counts_after %>%
+  pivot_wider(
+    names_from = doc_title,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  mutate(max_n = pmax(`Text A`, `Text B`)) %>%
+  arrange(desc(max_n))
+
+after_plot_tbl <- word_counts_wide_after %>%
+  slice_head(n = plot_n_words) %>%
+  pivot_longer(
+    cols = c(`Text A`, `Text B`),
+    names_to = "doc_title",
+    values_to = "n"
+  ) %>%
+  mutate(word = fct_reorder(word, n, .fun = max))
+
+ggplot(word_plot_data, aes(x = n, y = word)) + 
+  geom_col() +
+  facet_wrap(~ doc_title, scales = "free_x") +
+  labs(
+    title = "Most frequent words (stopwords removed)",
+    subtitle = paste0(
+      "Top ", plot_n_words,
+      " words by maximum frequency across both texts"
+    ),
+    x = "Word frequency",
+    y = NULL
+  ) +
+  theme_minimal()
+
+```
+The two tables yielded completely different results. Before the stopwords removal, all top 15 most frequent words are stopwords. After the removal, the table showed the top 15 words with content and meaning. Therefore, removing the stop word facilitated the analysis of the aactual content of the texts, exposing central themes such as 'trade' and 'exchange'. 
+
+```{r}
+data("stop_words")
+standard_stopwords <- words%>%
+  anti_join(stop_words, by = "word")%>%
+  count(doc_title, word, sort = TRUE)
+
+
+standard_stopwords_compared <- standard_stopwords %>%
+  pivot_wider(
+    names_from = doc_title,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  mutate(max_n = pmax(`Text A`, `Text B`)) %>%
+  arrange(desc(max_n)) %>%
+  slice(1:15)
+
+
+```
+this list includes words such as 'bee', 'haue' and 'hath' which are not informative on the content of the texts. They are words for connection and do not hold independent conceptual meaning. They could be helpful if the research question investigates the linguistic shifts in English across different periods. Therefore, different words can have different value depending on the research question. 
+
+
+
+
+
+
